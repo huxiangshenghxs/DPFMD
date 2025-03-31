@@ -6,9 +6,11 @@ Created on Mon Mar 31 10:19:18 2025
 """
 import numpy as np
 from scipy.integrate import solve_ivp
-
 from autograd import grad
 import math
+import os
+import matplotlib.pyplot as plt
+
 
 
 def generate_dhtm(nl):
@@ -28,7 +30,7 @@ def discrete_peierls(t, u, p):
     ωr, ωs, uzbound, uybound, σ, dhtm, gamma = p
     
     # 检查参数维度
-    N_l = dhtm.shape[0]
+    n_l = dhtm.shape[0]
     if not (ωr.shape[0] == 2 and ωs.shape[0] == 2 and uzbound.shape[0] == 2 
             and uybound.shape[0] == 2 and σ.shape[0] == 2):
         print("Wrong parameter size!")
@@ -54,14 +56,14 @@ def discrete_peierls(t, u, p):
     
     # 计算导数项 duz 和 duy
     duz = (
-        0.5 * ωr_screw * (uz[:-2] + uz[2:] - 2 * uz[1:-1]) +  # 二阶差分
-        0.5 * ωs_screw * dhtm * (uz[1:] - uz[:-1]) / np.pi +  # Hilbert项（示例）
+        0.5 * ωr_screw * (uz[0:nl] + uz[2:nl+2] - 2 * uz[1:nl+1]) +  # 二阶差分
+        0.5 * ωs_screw * dhtm @(uz[1:nl+2] - uz[0:nl+1] ) / np.pi +  # Hilbert项（示例）
         Fuz + np.full(N, σ_screw)  # 外加应力
     )
     
     duy = (
         0.5 * ωr_edge * (uy[:-2] + uy[2:] - 2 * uy[1:-1]) +
-        0.5 * ωs_edge * dhtm * (uy[1:] - uy[:-1]) / np.pi +
+        0.5 * ωs_edge * dhtm @ (uy[1:] - uy[:-1]) / np.pi +
         Fuy +   np.full(N, σ_edge)
     )
     
@@ -184,13 +186,13 @@ uybound = np.array([0, 0])  # y方向边界值 [uyl, uyr]
 
 # 3. 初始位移场 u0
 # 计算 atan 项（向量化操作）
-part1 = (np.arctan(lspan + 3.5) / (2 * np.pi)) + (np.arctan(lspan - 3.5) / (2 * np.pi))+0.5
+part1 = (np.arctan(lspan + 3.5)/(2*np.pi))+(np.arctan(lspan - 3.5)/(2*np.pi))+0.5
 
 # 拼接零数组
 u0 = np.concatenate([part1, np.zeros(nl)])  # 形状 (2*NL,)
 
 # 4. 时间范围
-tspan = (0.0, 6000.0)
+tspan = (0.0, 600.0)
 
 # 5. 应力模式标志
 single_stress = False  # False表示多应力，True表示单应力
@@ -202,8 +204,6 @@ if __name__ == "__main__":
     print("uzbound:", uzbound)  # 应输出 [0, 1]
     print("u0 shape:", u0.shape) # 应输出 (200,)（假设 NL=100）
     print("tspan:", tspan)       # 应输出 (0.0, 6000.0)
-
-
 
 def Gamma(u):
     """标量势能函数，对应Julia中的Γ"""
@@ -357,5 +357,86 @@ sol = solve_ivp(
 # - sol.t : 时间点数组
 # - sol.y : 状态变量数组（每列对应一个时间点）
 # - sol.success : 是否成功求解
+
+lspan = lspan.reshape(-1, 1)  
+# 螺旋分量 uz
+uz_data = np.hstack([lspan, sol.y[:nl, :]])  # 形状 (100, 601 + 1)
+np.savetxt(
+    "uzL12_structure_0K.dat",
+    uz_data.T,
+    fmt="%.6f",
+    header="l uz(t=0) uz(t=10) ..."
+)
+
+# 刃型分量 uy
+uy_data = np.hstack([lspan, sol.y[nl:2*nl, :]])
+np.savetxt(
+    "uyL12_structure_0K.dat",
+    uy_data.T,
+    fmt="%.6f",
+    header="l uy(t=0) uy(t=10) ..."
+)
+
+lspan = uz_data[:, 0]       # 第 0 列是 l，形状 (100,)
+uz_values = uz_data[:, 1:]  # 第 1 列开始是 uz 的时间步数据，形状 (100, nt)
+uy_values = uy_data[:, 1:]  # 第 1 列开始是 uy 的时间步数据，形状 (100, nt)
+nt = uz_values.shape[1]
+tspan = np.linspace(0, 600, nt)  # 形状 (nt,)
+
+
+# 找到中心点的索引（例如 l=0）
+center_idx = np.argmin(np.abs(lspan))  # 最接近 0 的索引
+
+# 提取中心点的位移数据
+uz_center = uz_values[center_idx, :]  # 形状 (nt,)
+uy_center = uy_values[center_idx, :]  # 形状 (nt,)
+
+# 绘制时间演化曲线
+plt.figure(figsize=(10, 6))
+plt.plot(tspan, uz_center, label=r"$u_z$ (Center)", color="blue", linewidth=2)
+plt.plot(tspan, uy_center, label=r"$u_y$ (Center)", color="red", linewidth=2, linestyle="--")
+plt.xlabel("Time (t)", fontsize=12)
+plt.ylabel("Displacement", fontsize=12)
+plt.title("Displacement Evolution at Center Point", fontsize=14)
+plt.grid(True, linestyle=":", alpha=0.6)
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+# 选择时间步索引
+time_indices = [0, nt//2, -1]  # 初始、中间、最终时间步
+time_labels = [f"t = {tspan[i]:.0f}" for i in time_indices]
+
+# 绘制 uz 的空间分布
+plt.figure(figsize=(10, 6))
+for i, idx in enumerate(time_indices):
+    plt.plot(lspan, uz_values[:, idx], 
+             label=time_labels[i], 
+             linewidth=2,
+             linestyle=["-", "--", "-."][i])
+plt.xlabel("Spatial Coordinate (l)", fontsize=12)
+plt.ylabel(r"$u_z$", fontsize=12)
+plt.title("Spatial Distribution of $u_z$ at Different Times", fontsize=14)
+plt.grid(True, linestyle=":", alpha=0.6)
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+# 绘制 uy 的空间分布
+plt.figure(figsize=(10, 6))
+for i, idx in enumerate(time_indices):
+    plt.plot(lspan, uy_values[:, idx], 
+             label=time_labels[i], 
+             linewidth=2,
+             linestyle=["-", "--", "-."][i])
+plt.xlabel("Spatial Coordinate (l)", fontsize=12)
+plt.ylabel(r"$u_y$", fontsize=12)
+plt.title("Spatial Distribution of $u_y$ at Different Times", fontsize=14)
+plt.grid(True, linestyle=":", alpha=0.6)
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+from matplotlib.colors import Normalize
 
 
