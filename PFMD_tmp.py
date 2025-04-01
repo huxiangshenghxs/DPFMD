@@ -6,23 +6,14 @@ Created on Mon Mar 31 10:19:18 2025
 """
 import numpy as np
 from scipy.integrate import solve_ivp
-from autograd import grad
+# from autograd import grad
 import math
 import os
 import matplotlib.pyplot as plt
 
 
 
-def generate_dhtm(nl):
-    # 生成行索引 l（从1到nl）
-    l = np.arange(1, nl + 1).reshape(-1, 1)  # 列向量 (nl, 1)
-    # 生成列索引 l1（从0到nl）
-    l1 = np.arange(0, nl + 1)                # 行向量 (1, nl+1)
-    # 计算分母矩阵（利用广播）
-    denominator = l1 - l + 0.5
-    # 避免除以零（此处无需处理，因为分母不可能为零）
-    dhtm = 1.0 / denominator
-    return dhtm
+
 
 
 def discrete_peierls(t, u, p):
