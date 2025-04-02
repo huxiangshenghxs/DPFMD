@@ -71,7 +71,7 @@ class DiscretePeierls:
             t_span=tspan,
             y0=self.u.flatten(),  # 初始条件必须是 1D
             method='BDF',     
-            rtol=1e-6,        
+            rtol=1e-3,        
             t_eval=t_eval
         )
         
